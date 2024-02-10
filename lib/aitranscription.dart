@@ -1,4 +1,6 @@
+import 'dart:async';
 import 'dart:convert';
+import 'dart:io' as f;
 
 import 'package:record/record.dart';
 import 'package:flutter/material.dart';
@@ -8,7 +10,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:socket_io_client/socket_io_client.dart' as IO;
 import 'package:http/http.dart' as http;
 
-void main() async {
+void main() {
   runApp(const MyApp());
 }
 
@@ -37,9 +39,13 @@ class TranscriptionPage extends StatefulWidget {
 }
 
 class _TranscriptionPageState extends State<TranscriptionPage> {
+  final TextEditingController _textController = TextEditingController();
   List<String> _transcripts = [];
   final recorder = AudioRecorder();
   bool isRecording = false;
+  bool detener = false;
+
+
 
   IO.Socket socket = IO.io('http://10.0.2.2:3000',
       OptionBuilder()
@@ -47,10 +53,29 @@ class _TranscriptionPageState extends State<TranscriptionPage> {
           .setExtraHeaders({'foo': 'bar'}) // optional
           .build());
 
+  @override
+  void initState() {
+    super.initState();
+    socket.on('connect', (_) => print('Connected to server'));
+    socket.on('transcript', (data) => setState(() => _transcripts.add(data)));
+
+    // Solicitar permiso de grabación de audio
+    _requestAudioPermission();
+  }
+
+  void _requestAudioPermission() async {
+    var status = await recorder.hasPermission();
+    if (status == false) {
+      print("Permiso de audio no otorgado");
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      appBar: AppBar(
+        title: Text('Diarización y Transcripción'),
+      ),
       backgroundColor: Colors.white,
       body: SafeArea(
         child: Padding(
@@ -64,9 +89,13 @@ class _TranscriptionPageState extends State<TranscriptionPage> {
               physics: BouncingScrollPhysics(),
               child: Column(
                 children: [
+                  TextField(
+                    controller: _textController,
+                    decoration: InputDecoration(labelText: 'Ingrese el nombre de la grabación'),
+                  ),
                   ElevatedButton(
                     //pruebaGET,pruebaSocket
-                    onPressed: pruebaSocket,
+                    onPressed: pruebaGET,
                     child: Text('Probar WebSocket'),
                   ),
                   /*ElevatedButton(
@@ -77,10 +106,16 @@ class _TranscriptionPageState extends State<TranscriptionPage> {
                     onPressed: stopRecording,
                     child: Text('Detener grabación'),
                   ),*/
-                  ElevatedButton(onPressed: isRecording ? detenerGrabacion : iniciarGrabacion,
+                  /*ElevatedButton(onPressed: isRecording ? detenerGrabacion : iniciarGrabacion,
                     child: Text(isRecording
                         ? 'Detener Grabación'
-                        : 'Iniciar Grabación'),),
+                        : 'Iniciar Grabación'),),*/
+                  ElevatedButton(onPressed:
+                  isRecording ? null : iniciarGrabacion,
+                    child: Text('Comenzar a grabar'),),
+                  ElevatedButton(onPressed:
+                  isRecording ? detenerGrabacion : null,
+                    child: Text('Detener grabación'),),
                   ListView.builder(
                     shrinkWrap: true,
                     itemCount: _transcripts.length,
@@ -96,22 +131,31 @@ class _TranscriptionPageState extends State<TranscriptionPage> {
       ),
     );
   }
+
+  // Iniciar grabación
   Future<void> iniciarGrabacion() async {
-    if(!isRecording){
-      try{
-        if(await recorder.hasPermission()){
-          final path = await getTemporaryDirectory();
-          //final filename = DateTime.now().millisecondsSinceEpoch.toString() + '.wav';
-          final filename = "audioPruebaFinal" + '.wav';
-          final filePath = path.path + '/' + filename;
-          await recorder.start(const RecordConfig(), path: filePath);
-          setState(() {
-            isRecording = true;
-          });
+    final path = await getTemporaryDirectory();
+    final filePath = path.path + '/' + _textController.text;
+
+    if (await recorder.hasPermission()) {
+      await recorder.start(RecordConfig(), path: filePath);
+      Timer.periodic(Duration(seconds: 15), (timer) async{
+        if(isRecording){
+          final path = await recorder.stop();
+          var bytes = await f.File(path!).readAsBytes();
+          //print(path); // Path completo al archivo de audio grabado
+
+          socket.emit('data',path);
+          iniciarGrabacion();
         }
-      }catch (e){
-        print("Eror: $e");
-      }
+      });
+      socket.emit('start', _textController.text);
+      setState(() {
+        isRecording = true;
+
+      });
+    } else {
+      print("No se tienen los permisos necesarios");
     }
     // Mostrar un Snackbar para indicar que la grabación ha comenzado
     ScaffoldMessenger.of(context).showSnackBar(
@@ -121,44 +165,51 @@ class _TranscriptionPageState extends State<TranscriptionPage> {
     );
   }
 
-  Future<void> detenerGrabacion() async {
-    if(isRecording){
-      try{
-        var audio = await recorder.stop();
-        setState(() {
-          isRecording = false;
-        });
-        socket.onConnect((data) => {
-          print('Connected to server'),
-          //MIENTRAS SE GRABA EL AUDIO ENVIAR PARTES DEL MISMO
-          socket.emit("transcription",audio),
-        });
-        socket.onDisconnect((_) => print('disconnect'));
-      }catch (e){
-        print("Eror: $e");
-      }
+  Future<void> grabacion() async {
+    final nombreAudio = 'audio';
+    final path = await getTemporaryDirectory();
+    final filePath = path.path + '/' + _textController.text;
+
+    if (await recorder.hasPermission()) {
+      await recorder.start(RecordConfig(), path: filePath);
+      while (detener){
+        await recorder.start(RecordConfig(), path: filePath);
+        detener = true;
+        socket.emit('start', _textController.text);
+      };
+
+      setState(() {
+        isRecording = true;
+
+      });
+    } else {
+      print("No se tienen los permisos necesarios");
     }
     // Mostrar un Snackbar para indicar que la grabación ha comenzado
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('Grabación detenida'),
+        content: Text('Grabación iniciada'),
       ),
     );
   }
-  void pruebaSocket() {
-    /*socket.connect();
-    socket.onConnect((_){
-      print("Connection established");
-      //socket.emit('message','Este es un mensaje de prueba desde flutter');
-      socket.send('Este es un mensaje de prueba desde flutter' as List<String>);
-    });*/
-    /*socket.onConnect((_) => {
-      print('Connected to server'),
-      socket.emit('message','hola desde flutter PRUEBA 0010'),
-      socket.on('message', (data) =>
-        print("Respuesta del servidor: "+data),),
+
+/*// Start the timer
+  Timer.periodic(Duration(seconds: 10), (timer) {
+    // Call your function here
+    myFunction();
+  });*/
+
+
+  // Detener grabación
+  Future<void> detenerGrabacion() async {
+    final path = await recorder.stop();
+    var bytes = await f.File(path!).readAsBytes();
+    print(path); // Path completo al archivo de audio grabado
+
+    socket.emit('stop',base64Encode(bytes));
+    setState(() {
+      isRecording = false;
     });
-    socket.onDisconnect((_) => print('disconnect'));*/
   }
 
   Future <void> pruebaGET() async {
@@ -176,11 +227,14 @@ class _TranscriptionPageState extends State<TranscriptionPage> {
 
   @override
   void dispose() {
-    socket.disconnect();
-    socket.dispose();
     super.dispose();
+    socket.off('connect');
+    socket.off('transcript');
+    socket.disconnect();
   }
 }
+
+
 
 /*import 'dart:async';
 
