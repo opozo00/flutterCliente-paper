@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
 
-
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'dart:io';
@@ -10,7 +9,6 @@ import 'package:modelos_paper/constant.dart';
 import 'package:record/record.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
-
 
 /*void main() {
   runApp(const MyApp());
@@ -41,13 +39,11 @@ class MyHomePage extends StatefulWidget {
 }
 
 class _MyHomePageState extends State<MyHomePage> {
-
   bool _isRecording = false;
-  AudioRecorder record = AudioRecorder();
+  final record = AudioRecorder();
   late String _transcription;
   List<String> _transcripts = [];
   bool _grabacionTerminada = false;
-
 
   Future<String> convertTextToSpeech(String filePath) async {
     const apiKey = apiSecretKey;
@@ -60,25 +56,31 @@ class _MyHomePageState extends State<MyHomePage> {
     var response = await request.send();
     var newresponse = await http.Response.fromStream(response);
     final responseData = json.decode(newresponse.body);
+    print("ESTE ES EL TEXTO TRANSCRITO ↓↓↓↓↓↓ ");
     print(responseData["text"]);
-    print("JSON↓");
+    //print("JSON↓");
+    /*setState(() {
+      if (responseData["text"] != null) {
+        _transcripts.add(responseData["text"]);
+      } else {
+        print("EL AUDIO NO CONTIENE NADA");
+      }
+    });*/
     //print(json.decode(responseData));
-    return responseData["text"];//Retorna un string
+    return responseData["text"]; //Retorna un string
   }
-
-
 
   @override
   void initState() {
-    _grabacionTerminada = false;
+    //_grabacionTerminada = false;
     super.initState();
     //record = AudioRecorder();
-    try {
+    /*try {
       record = AudioRecorder();
     } catch (e) {
       // Manejar el error si la creación del AudioRecorder falla
       print("Error al crear AudioRecorder: $e");
-    }
+    }*/
   }
 
   void _onRecordButtonPressed() async {
@@ -98,14 +100,23 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 
   void _startRecording() async {
-    if (await record.hasPermission()) {
-      //await record.start(const RecordConfig(), path: '/audios/audioPrueba002.wav');
-      final path = await getTemporaryDirectory();
-      //final filename = DateTime.now().millisecondsSinceEpoch.toString() + '.wav';
-      final filename = "audioPrueba0010" + '.wav';
-      final filePath = path.path + '/' + filename;
+    final path = await getTemporaryDirectory();
+    //final filename = DateTime.now().millisecondsSinceEpoch.toString() + '.wav';
+    final filename = '${DateTime.now().millisecondsSinceEpoch}.wav';
+    final filePath = path.path + '/' + filename;
+    //startStreaming(RecordConfig());
+    //NECESITO CREAR UN STREAMING PARA NO DEPENDER DE QUE SE DEBE
+    //CANCELAR EL AUDIO PARA LLAMAR LA API
 
+    if (await record.hasPermission()) {
       await record.start(const RecordConfig(), path: filePath);
+      /*Timer.periodic(Duration(seconds: 10), (timer) async {
+        final path = await record.stop();
+        _startRecording();
+      });*/
+      setState(() {
+        _isRecording = true;
+      });
     }
   }
 
@@ -116,23 +127,26 @@ class _MyHomePageState extends State<MyHomePage> {
     //_sendAudioToServer(path!);
     //_transcribeAudio(path!);
     //convertTextToSpeech(path!);
-    var whisper = convertTextToSpeech(path!);
-    print(whisper.runtimeType);
+    convertTextToSpeech(path!);
+    /*print(whisper.runtimeType);
     Map<String, String> body = {
-      'transcripcion':json.encode(await whisper),
+      'transcripcion': json.encode(await whisper),
     };
     print("BODY");
     print(body);
     print("FIN DEL BODY");
     print(body.runtimeType);
     print(body['transcripcion']);
-    _transcription = body['transcripcion']!;
+    _transcription = body['transcripcion']!;*/
     //print(await whisper);
     //funcion para enviar los resultados de whisper al servidor
     //_enviarWhisperAlServer(whisper);
-    _enviarWhisperAlServer(body);
+    //_enviarWhisperAlServer(body);
     //record.dispose();
-    _grabacionTerminada = true;
+    //_grabacionTerminada = true;
+    setState(() {
+      _isRecording = false;
+    });
   }
 
   @override
@@ -143,7 +157,7 @@ class _MyHomePageState extends State<MyHomePage> {
     record.dispose();
   }
 
-  Future<void> _sendAudioToServer( audioFile) async {
+  Future<void> _sendAudioToServer(audioFile) async {
     // Obtener la ruta del archivo de audio
     //String? audioPath = await audioFile;
 
@@ -167,9 +181,8 @@ class _MyHomePageState extends State<MyHomePage> {
     }
   }
 
-
   //METODO PARA ENVIAR LA TRANSCRIPCION A FLASK
-  Future<void> _enviarWhisperAlServer(Map<String, String > transcripcion) async {
+  Future<void> _enviarWhisperAlServer(Map<String, String> transcripcion) async {
     try {
       var request = http.MultipartRequest(
           'POST', Uri.parse('http://10.0.2.2:5000/transcription'));
@@ -192,11 +205,10 @@ class _MyHomePageState extends State<MyHomePage> {
       if (response.statusCode == 200) {
         ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text('Audio enviado correctamente')));
-      }
-      else {
-        if (response.statusCode == 201){
+      } else {
+        if (response.statusCode == 201) {
           print("Se debe cambiar el formato a json");
-        }else{
+        } else {
           print('Error al enviar audio al server: ${response.statusCode}');
         }
         // Display an error message to the user
@@ -207,95 +219,106 @@ class _MyHomePageState extends State<MyHomePage> {
     }
   }
 
-    Future<void> _transcribeAudio(String audioFile) async {
-      // Obtener la ruta del archivo de audio
-      //String? audioPath = await audioFile;
+  Future<void> _transcribeAudio(String audioFile) async {
+    // Obtener la ruta del archivo de audio
+    //String? audioPath = await audioFile;
 
-      // Crear una solicitud HTTP
-      try {
-        var request = http.MultipartRequest(
-            'POST', Uri.parse(
-            'http://10.0.2.2:5000/diarization')); //'POST', Uri.parse('http://10.0.2.2:5000/transcription'));
-        request.files.add(
-            await http.MultipartFile.fromPath('audio', audioFile));
-        var response = await request.send();
+    // Crear una solicitud HTTP
+    try {
+      var request = http.MultipartRequest(
+          'POST',
+          Uri.parse(
+              'http://10.0.2.2:5000/diarization')); //'POST', Uri.parse('http://10.0.2.2:5000/transcription'));
+      request.files.add(await http.MultipartFile.fromPath('audio', audioFile));
+      var response = await request.send();
 
-        if (response.statusCode == 200) {
-          ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('Audio enviado correctamente')));
-          var responseBody = await response.stream;
-          _transcription = json.decode(responseBody as String)['transcription'];
-        } else {
-          print('Error al enviar audio: ${response.statusCode}');
-          // Display an error message to the user
-        }
-      } catch (e) {
-        print('Error en la comunicación con el servidor: $e');
+      if (response.statusCode == 200) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Audio enviado correctamente')));
+        var responseBody = await response.stream;
+        _transcription = json.decode(responseBody as String)['transcription'];
+      } else {
+        print('Error al enviar audio: ${response.statusCode}');
         // Display an error message to the user
       }
+    } catch (e) {
+      print('Error en la comunicación con el servidor: $e');
+      // Display an error message to the user
     }
+  }
 
-    Future<void> _pruebaServidor(String endpoint) async {
-      final url = "http://10.0.2.2:5000"; //10.0.2.2 localhost en Flutter
+  Future<void> _pruebaServidor(String endpoint) async {
+    final url = "http://10.0.2.2:5000"; //10.0.2.2 localhost en Flutter
 
-      var request = http.MultipartRequest("GET", Uri.parse(url));
+    var request = http.MultipartRequest("GET", Uri.parse(url));
 
-      var response = await request.send();
-      if (response.statusCode == 200) {
-        print(
-            'Respuesta del servidor: ${await response.stream.bytesToString()}');
-      } else {
-        print('Error en la solicitud HTTP: ${response.reasonPhrase}');
-      }
+    var response = await request.send();
+    if (response.statusCode == 200) {
+      print('Respuesta del servidor: ${await response.stream.bytesToString()}');
+    } else {
+      print('Error en la solicitud HTTP: ${response.reasonPhrase}');
     }
+  }
 
-    @override
-    Widget build(BuildContext context) {
-      return Scaffold(
-        backgroundColor: Colors.white,
-        body: SafeArea(
-          child: Padding(
-            padding: EdgeInsets.only(top: 25,
-              bottom: 25,
-              left: 25,
-              right: 25,
-        ),
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.white,
+      body: SafeArea(
+        child: Padding(
+          padding: EdgeInsets.only(
+            top: 25,
+            bottom: 25,
+            left: 25,
+            right: 25,
+          ),
           child: Center(
             child: SingleChildScrollView(
               physics: BouncingScrollPhysics(),
               child: Column(
                 children: [
-                  ElevatedButton(onPressed: () async {
-                  await _pruebaServidor("/");
-                }, child: Text("Prueba con el servidor"),),
-                /*IconButton(
+                  ElevatedButton(
+                    onPressed: () async {
+                      await _pruebaServidor("/");
+                    },
+                    child: Text("Prueba con el servidor"),
+                  ),
+                  /*  IconButton(
                   icon: Icon(_isRecording ? Icons.stop : Icons.mic),
                   onPressed: _onRecordButtonPressed ,
                 ),*/
+                  ElevatedButton(
+                    onPressed: _isRecording ? null : _startRecording,
+                    child: Text('Comenzar a grabar'),
+                  ),
+                  ElevatedButton(
+                    onPressed: _isRecording ? _stopRecording : null,
+                    child: Text('Detener grabación'),
+                  ),
                   SizedBox(
-                  height: 50,
-                ),
+                    height: 50,
+                  ),
                   Column(
                     children: [
                       ListView.builder(
+                        shrinkWrap: true,
                         itemCount: _transcripts.length,
-                        itemBuilder: (context, index){
+                        itemBuilder: (context, index) {
                           return Text(_transcripts[index]);
-                      },
-                    ),
-                  ],
-                ),
-                //Text(_transcription),
-              ],
+                        },
+                      ),
+                    ],
+                  ),
+                  //Text(_transcription),
+                ],
+              ),
             ),
-          ),),
+          ),
         ),
-        ),
-      );
-    }
-
+      ),
+    );
   }
-
+}
 
 /*
 import 'package:flutter/material.dart';
@@ -433,5 +456,3 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 }
 */
-
-

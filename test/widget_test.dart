@@ -7,6 +7,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:modelos_paper/aitranscription.dart';
 
 import 'package:modelos_paper/main.dart';
 
